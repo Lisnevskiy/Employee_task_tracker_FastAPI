@@ -1,0 +1,68 @@
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import JSONResponse
+from sqlalchemy.orm import Session
+
+from app.crud.employee_crud import get_employees, create_employee, get_employee, delete_employee, \
+    partial_update_employee, get_employees_tasks
+from app.database import get_db
+from app.schemas.employee_schemas import EmployeeSchema, EmployeeCreateSchema, EmployeeUpdateSchema, EmployeeTasksSchema
+
+router = APIRouter(
+    prefix="/employees",
+    tags=["employees"]
+)
+
+
+@router.post("/", response_model=EmployeeSchema, status_code=status.HTTP_201_CREATED)
+def create_new_employee(employee: EmployeeCreateSchema, db: Session = Depends(get_db)):
+
+    return create_employee(db=db, employee=employee)
+
+
+@router.get("/", response_model=list[EmployeeSchema])
+def read_employees(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+
+    employees = get_employees(db, skip=skip, limit=limit)
+
+    return employees
+
+
+@router.get("/tasks/", response_model=list[EmployeeTasksSchema])
+def read_employees_tasks(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+
+    employees = get_employees_tasks(db, skip=skip, limit=limit)
+
+    return employees
+
+
+@router.get("/{employee_id}", response_model=EmployeeSchema)
+def read_employee(employee_id: int, db: Session = Depends(get_db)):
+
+    db_employee = get_employee(db, employee_id=employee_id)
+
+    if db_employee is None:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    return db_employee
+
+
+@router.put("/{employee_id}", response_model=EmployeeSchema)
+def put_employee(employee_id: int, employee: EmployeeUpdateSchema, db: Session = Depends(get_db)):
+
+    db_employee = partial_update_employee(db=db, employee_id=employee_id, employee=employee)
+
+    if db_employee is None:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    return db_employee
+
+
+@router.delete("/{employee_id}", response_model=EmployeeSchema)
+def del_employee(employee_id: int, db: Session = Depends(get_db)):
+
+    response = delete_employee(db, employee_id=employee_id)
+
+    if response is False:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    return JSONResponse(content={"message": "Employee deleted"}, status_code=200)
