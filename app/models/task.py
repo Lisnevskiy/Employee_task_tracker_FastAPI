@@ -15,8 +15,8 @@ class Task(Base):
     parent_task_id = Column(Integer, ForeignKey("tasks.id"))
     executor_id = Column(Integer, ForeignKey(Employee.id))
     deadline = Column(DateTime)
-    status = Column(Boolean, default=False)
+    is_active = Column(Boolean, default=False)
 
-    executor = relationship("Employee", back_populates="tasks")
+    executor = relationship("Employee", back_populates="task")
 
     metadata = metadata_task
