@@ -1,13 +1,10 @@
 from typing import Type, List
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.crud.employee_crud import (
-    get_employees_with_min_workload,
-    get_employees_without_tasks,
-    get_employee,
-    get_min_tasks_count,
-)
+from app.crud.employee_crud import get_employee
+from app.models.employee import Employee
 from app.models.task import Task
 from app.schemas.task_schemas import TaskCreateSchema, TaskUpdateSchema
 
@@ -27,103 +24,118 @@ def get_task(db: Session, task_id: int) -> Type[Task]:
 def get_tasks(db: Session, skip: int = 0, limit: int = 100) -> List[Type[Task]]:
     """
     Получение списка задач с пропуском и лимитом.
-
     Args:
         db (Session): Сессия базы данных SQLAlchemy.
         skip (int, optional): Количество пропускаемых элементов. По умолчанию 0.
         limit (int, optional): Количество извлекаемых элементов. По умолчанию 100.
-
     Returns:
         List[Task]: Список задач.
     """
     return db.query(Task).offset(skip).limit(limit).all()
 
 
-def get_tasks_without_executor(db: Session) -> List[Type[Task]]:
+def get_min_task_count(db: Session) -> int:
     """
-    Получение списка задач без исполнителя.
+    Получение минимального количества задач у сотрудников.
     Args:
         db (Session): Сессия базы данных SQLAlchemy.
     Returns:
-        List[Task]: Список задач без исполнителя.
+        int: Минимальное количество задач.
     """
-    return db.query(Task).filter(Task.executor_id == None).all()
+    min_tasks_count = (
+        db.query(Employee.id, func.count(Task.id).label('task_count'))
+        .outerjoin(Employee.task)
+        .group_by(Employee.id)
+    ).order_by(func.count(Task.id)).first().task_count
+
+    return min_tasks_count
 
 
-def get_parent_tasks(db: Session, tasks) -> List[Type[Task]]:
+def get_unassigned_parent_tasks(db: Session) -> List[Type[Task]]:
     """
-    Получение списка родительских задач для заданных задач.
+    Получение списка задач, не взятых в работу, и от которых зависят другие задачи.
     Args:
         db (Session): Сессия базы данных SQLAlchemy.
-        tasks: Список задач.
     Returns:
-        List[Task]: Список родительских задач.
+        List[Task]: Список родительских задач без исполнителя.
     """
-    parent_tasks = []
+    unassigned_parent_tasks = (
+        db.query(Task)
+        .filter(Task.id.in_(db.query(Task.parent_task_id)))
+        .filter(Task.executor_id.is_(None))
+        .all()
+    )
 
-    for task in tasks:
-        dependent_tasks = db.query(Task).filter(Task.parent_task_id == task.id).all()
-
-        if dependent_tasks:
-            parent_tasks.append(task)
-
-    return parent_tasks
+    return unassigned_parent_tasks
 
 
 def get_important_tasks(db: Session):
     """
-    Возвращает важные задачи с информацией о сотрудниках с минимальной загрузкой.
+    Получает список важных задач.
+
+    Важные задачи определяются следующим образом:
+    1. Выбираются невыполненные родительские задачи, у которых не указан исполнитель.
+    2. Находится минимальное количество задач, выполненных сотрудниками.
+    3. Выбираются сотрудники, у которых количество задач равно минимальному количеству.
+
+    Если родительская задача имеет исполнителя, то проверяется его нагрузка:
+    - Если у исполнителя родительской задачи задач меньше или равно (минимальное количество задач + 2),
+      то его добавляем в список исполнителей важной задачи.
+
     Args:
         db (Session): Сессия базы данных SQLAlchemy.
     Returns:
-        Список важных задач с информацией о сотрудниках.
+        List[dict]: Список словарей с информацией о важных задачах.
+            Каждый словарь содержит:
+            - 'title': Название задачи.
+            - 'deadline': Срок выполнения задачи.
+            - 'employees': Список ФИО сотрудников, способных взять важную задачу.
     """
-    # Получаем задачи без исполнителя
-    tasks_without_executor = get_tasks_without_executor(db)
+    # Получаем родительских задач без исполнителя
+    tasks = get_unassigned_parent_tasks(db)
 
-    # Получаем родительские задачи
-    tasks = get_parent_tasks(db, tasks_without_executor)
+    # Получаем минимальное количество задач у сотрудников
+    min_tasks_count = get_min_task_count(db)
 
-    # Получаем сотрудников без задач
-    employees_with_min_workload = get_employees_without_tasks(db)
+    # Получаем сотрудников с минимальным количеством задач
+    min_loaded_employees = (
+        db.query(Employee)
+        .outerjoin(Employee.task)
+        .group_by(Employee.id)
+        .having(func.count(Task.id) == min_tasks_count)
+        .all()
+    )
 
-    # Если нет сотрудников без задач, получаем сотрудников с минимальной загрузкой
-    if len(employees_with_min_workload) == 0:
-        employees_with_min_workload = get_employees_with_min_workload(db)
+    # Извлекаем ФИО сотрудников из результата запроса
+    min_loaded_employees = [employee.full_name for employee in min_loaded_employees]
 
-    # Создаем пустой список для хранения важных задач
     important_tasks = []
 
-    # Итерируем по списку задач
-    for important_task in tasks:
-        # Проверяем, является ли задача родительской (не имеет parent_task_id)
-        if important_task.parent_task_id is None:
-            # Создаем словарь с информацией о задаче и сотрудниках с минимальной загрузкой
-            important_tasks.append({
-                'title': important_task.title,
-                'deadline': important_task.deadline,
-                'employees': [employee.full_name for employee in employees_with_min_workload]
-            })
-        else:
-            # Если задача имеет parent_task_id, находим ее родительскую задачу
-            task = db.query(Task).filter(Task.id == important_task.parent_task_id).first()
-            # Проверяем, есть ли у родительской задачи исполнитель
-            if task.executor_id:
-                # Если есть исполнитель, получаем информацию о сотруднике
-                emp = get_employee(db, task.executor_id)
-                # Проверяем, находится ли сотрудник на грани минимальной загрузки
-                if len(emp.task) - get_min_tasks_count(db) <= 2:
-                    # Если сотрудник на грани, обновляем список сотрудников с минимальной загрузкой
-                    employees_with_min_workload = [emp]
+    # Обрабатываем каждую задачу
+    for task in tasks:
+        title = task.title
+        deadline = task.deadline
+        employees = min_loaded_employees
 
-                # Добавляем информацию о задаче и сотрудниках в список важных задач
-                important_tasks.append({
-                    'title': important_task.title,
-                    'deadline': important_task.deadline,
-                    'employees': [employee.full_name for employee in employees_with_min_workload]
-                })
+        # Если задача имеет родительскую задачу
+        if task.parent_task_id is not None:
+            parent_task = get_task(db, task.parent_task_id)
 
-    # Возвращаем список важных задач
+            # Если у родительской задачи есть исполнитель
+            if parent_task.executor_id:
+                emp = get_employee(db, parent_task.executor_id)
+
+                # Если нагрузка исполнителя удовлетворяет условиям
+                if len(emp.task) - min_tasks_count <= 2:
+                    employees = [emp.full_name]
+
+        # Добавляем информацию о важной задаче в список
+        important_tasks.append({
+            'title': title,
+            'deadline': deadline,
+            'employees': employees
+        })
+
     return important_tasks
 
 
@@ -158,7 +170,6 @@ def partial_update_task(db: Session, task_id: int, task: TaskUpdateSchema) -> Ty
         db (Session): Сессия базы данных SQLAlchemy.
         task_id (int): Идентификатор задачи.
         task (TaskUpdateSchema): Данные для частичного обновления задачи.
-
     Returns:
         Task: Обновленная задача.
     """
