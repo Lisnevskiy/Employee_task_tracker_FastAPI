@@ -43,52 +43,11 @@ def get_employees_tasks(db: Session, skip: int = 0, limit: int = 100) -> List[Ty
     Returns:
         List[Employee]: Список сотрудников с числом активных задач.
     """
-    employees = db.query(Employee).join(Employee.task).filter(Task.is_active == True)
+    employees = db.query(Employee).join(Employee.task).filter(Task.is_active.is_(True))
     employees = employees.group_by(Employee.id).order_by(func.count(Task.id).desc())
     employees = employees.offset(skip).limit(limit).all()
 
     return employees
-
-
-def get_employees_without_tasks(db: Session) -> List[Type[Employee]]:
-    """
-    Получение списка сотрудников без активных задач.
-    Args:
-        db (Session): Сессия базы данных SQLAlchemy.
-    Returns:
-        List[Employee]: Список сотрудников без активных задач.
-    """
-    return db.query(Employee).filter(Employee.task == None).all()
-
-
-def get_min_tasks_count(db: Session) -> int:
-    """
-    Получение минимального количества задач у сотрудника.
-    Args:
-        db (Session): Сессия базы данных SQLAlchemy.
-    Returns:
-        int: Минимальное количество задач у сотрудника.
-    """
-    emp_min_tasks = db.query(Employee).join(Employee.task).group_by(Employee.id).order_by(func.count(Task.id)).first()
-
-    return len(emp_min_tasks.task)
-
-
-def get_employees_with_min_workload(db: Session) -> List[Type[Employee]]:
-    """
-    Получение списка сотрудников с минимальной загрузкой задачами.
-    Args:
-        db (Session): Сессия базы данных SQLAlchemy.
-    Returns:
-        List[Employee]: Список сотрудников с минимальной загрузкой задачами.
-    """
-    min_tasks_count = get_min_tasks_count(db)
-
-    employees = db.query(Employee).join(Employee.task).group_by(Employee.id).all()
-
-    employees_with_min_workload = [employee for employee in employees if len(employee.task) == min_tasks_count]
-
-    return employees_with_min_workload
 
 
 def create_employee(db: Session, employee: EmployeeCreateSchema) -> Employee:
