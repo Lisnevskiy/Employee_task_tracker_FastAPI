@@ -54,7 +54,7 @@ def read_employees(skip: int = 0, limit: int = 100, db: Session = Depends(get_db
 @router.get("/tasks/", response_model=list[EmployeeTasksSchema])
 def read_employees_tasks(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     """
-    Получение списка сотрудников с их задачами.
+    Получение списка сотрудников и их задач, отсортированного по количеству активных задач.
     Args:
         skip (int, optional): Количество пропускаемых элементов. По умолчанию 0.
         limit (int, optional): Количество извлекаемых элементов. По умолчанию 100.
