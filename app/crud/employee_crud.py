@@ -50,6 +50,26 @@ def get_employees_tasks(db: Session, skip: int = 0, limit: int = 100) -> List[Ty
     return employees
 
 
+def get_min_loaded_employees(db: Session, min_tasks_count: int) -> List[Type[Employee]]:
+    """
+    Получает список сотрудников с минимальной нагрузкой задач.
+    Args:
+        db (Session): Сессия базы данных SQLAlchemy.
+        min_tasks_count (int): Минимальное количество задач.
+    Returns:
+        List[Employee]: Список сотрудников с минимальной нагрузкой.
+    """
+    min_loaded_employees = (
+        db.query(Employee)
+        .outerjoin(Employee.task)
+        .group_by(Employee.id)
+        .having(func.count(Task.id) == min_tasks_count)
+        .all()
+    )
+
+    return min_loaded_employees
+
+
 def create_employee(db: Session, employee: EmployeeCreateSchema) -> Employee:
     """
     Создание нового сотрудника.
