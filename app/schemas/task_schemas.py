@@ -1,6 +1,8 @@
 from datetime import datetime
 
+import pytz
 from pydantic import BaseModel, field_validator
+from pydantic_core.core_schema import FieldValidationInfo
 
 
 class TaskBaseSchema(BaseModel):
@@ -19,12 +21,12 @@ class TaskBaseSchema(BaseModel):
     deadline: datetime | None = None
     is_active: bool | None = False
 
-    @field_validator("is_active", "executor_id")
-    def validate_is_active(cls, is_active, executor_id):
+    @field_validator("is_active")
+    def validate_is_active(cls, is_active, info: FieldValidationInfo):
         """
         Валидатор для проверки, что задача не может быть активной без назначенного исполнителя.
         """
-        if is_active and executor_id is None:
+        if "executor_id" in info.data and is_active and info.data["executor_id"] is None:
             raise ValueError("Task cannot be active without an assigned executor")
 
         return is_active
@@ -39,7 +41,9 @@ class TaskCreateSchema(TaskBaseSchema):
         """
         Валидатор для проверки, что срок выполнения не может быть в прошлом.
         """
-        if deadline and deadline < datetime.now():
+        utc = pytz.UTC
+
+        if deadline and deadline.replace(tzinfo=utc) < datetime.now().replace(tzinfo=utc):
             raise ValueError("Deadline cannot be set in the past")
 
         return deadline
