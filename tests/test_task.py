@@ -8,6 +8,16 @@ def test_create_new_task():
         "parent_task_id": 2
     }
 
+    new_invalid_task_data = {
+        "title": "Test_title",
+        "deadline": "2020-11-09T06:46:48",
+    }
+
+    new_invalid_task_data_2 = {
+        "title": "Test_title",
+        "is_active": True
+    }
+
     response = client.post("/tasks/", json=new_task_data)
 
     assert response.status_code == 201
@@ -20,6 +30,12 @@ def test_create_new_task():
     assert created_task["executor_id"] is None
     assert created_task["deadline"] == "3024-11-09T06:46:48"
     assert created_task["is_active"] is False
+
+    response = client.post("/tasks/", json=new_invalid_task_data)
+    assert response.status_code == 422
+
+    response = client.post("/tasks/", json=new_invalid_task_data_2)
+    assert response.status_code == 422
 
 
 def test_read_tasks():
