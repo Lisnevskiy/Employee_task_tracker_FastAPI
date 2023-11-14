@@ -3,7 +3,7 @@ from typing import Type, List
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.crud.employee_crud import get_employee
+from app.crud.employee_crud import get_employee, get_min_loaded_employees
 from app.models.employee import Employee
 from app.models.task import Task
 from app.schemas.task_schemas import TaskCreateSchema, TaskUpdateSchema
@@ -98,13 +98,7 @@ def get_important_tasks(db: Session):
     min_tasks_count = get_min_task_count(db)
 
     # Получаем сотрудников с минимальным количеством задач
-    min_loaded_employees = (
-        db.query(Employee)
-        .outerjoin(Employee.task)
-        .group_by(Employee.id)
-        .having(func.count(Task.id) == min_tasks_count)
-        .all()
-    )
+    min_loaded_employees = get_min_loaded_employees(db, min_tasks_count)
 
     # Извлекаем ФИО сотрудников из результата запроса
     min_loaded_employees = [employee.full_name for employee in min_loaded_employees]
